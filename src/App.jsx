@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Activity,
@@ -37,6 +37,7 @@ import {
 import { candidates, distributionData, funnelData, radarData, skillData } from './data/candidates';
 import { CircularProgress, ProgressBar } from './components/Progress';
 import { GlassCard, Section, fadeUp } from './components/Motion';
+import { authApi, resumeApi, setToken } from './lib/api';
 
 const features = [
   ['Semantic Candidate Matching', Brain, 'Understands intent, adjacent skills, and domain depth beyond literal resume terms.'],
@@ -71,6 +72,12 @@ const chartColors = ['#4F8EF7', '#7C4DFF', '#21D4FD', '#8DEBFF'];
 function App() {
   const [activeCandidate, setActiveCandidate] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [user, setUser] = useState(null);
+  const [apiRankings, setApiRankings] = useState([]);
+
+  useEffect(() => {
+    authApi.me().then(({ user }) => setUser(user)).catch(() => {});
+  }, []);
 
   return (
     <main className="min-h-screen overflow-hidden bg-ink text-white">
@@ -79,7 +86,8 @@ function App() {
       <Hero />
       <Features />
       <Workflow />
-      <DashboardPreview onSelect={setActiveCandidate} />
+      <BackendWorkspace user={user} setUser={setUser} setApiRankings={setApiRankings} />
+      <DashboardPreview onSelect={setActiveCandidate} apiRankings={apiRankings} />
       <Analytics />
       <Footer />
       <CandidateDrawer candidate={activeCandidate} onClose={() => setActiveCandidate(null)} />
@@ -254,7 +262,237 @@ function Workflow() {
   );
 }
 
-function DashboardPreview({ onSelect }) {
+function BackendWorkspace({ user, setUser, setApiRankings }) {
+  const [mode, setMode] = useState('demo');
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
+  const [jobTitle, setJobTitle] = useState('Senior AI Engineer');
+  const [jobDescription, setJobDescription] = useState(
+    'We need a Senior AI Engineer with 6+ years of experience building production RAG systems, semantic search, Python services, vector databases, evaluation pipelines, and recruiter-facing AI workflows.',
+  );
+  const [files, setFiles] = useState([]);
+  const [job, setJob] = useState(null);
+  const [uploaded, setUploaded] = useState([]);
+  const [status, setStatus] = useState('Ready to connect the real pipeline.');
+  const [loading, setLoading] = useState(false);
+
+  const canRank = user && job && uploaded.length > 0;
+
+  async function handleAuth(event) {
+    event.preventDefault();
+    setLoading(true);
+    try {
+      const result =
+        mode === 'demo'
+          ? await authApi.demo()
+          : mode === 'login'
+            ? await authApi.login(authForm)
+            : await authApi.register(authForm);
+      setToken(result.token);
+      setUser(result.user);
+      setStatus(`Signed in as ${result.user.name}.`);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function createJob() {
+    setLoading(true);
+    try {
+      const result = await resumeApi.createJob({ title: jobTitle, description: jobDescription });
+      setJob(result.job);
+      setStatus(`Job parsed: ${result.job.extracted_json.skills.length || 0} skills detected.`);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function uploadResumes() {
+    if (!files.length) {
+      setStatus('Choose resume files first.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await resumeApi.uploadResumes(files);
+      setUploaded(result.candidates);
+      setStatus(`${result.candidates.length} resume${result.candidates.length === 1 ? '' : 's'} parsed and saved.`);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runRanking() {
+    setLoading(true);
+    try {
+      const result = await resumeApi.runRanking(job.id);
+      setApiRankings(result.rankings);
+      setStatus(`Ranking complete using ${result.provider}. Dashboard rows updated.`);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Section id="backend">
+      <SectionHeader eyebrow="Live Product" title="Real uploads, parsing, auth, database, and AI ranking" />
+      <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
+        <GlassCard className="p-6">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold">Authentication</h3>
+              <p className="mt-1 text-sm text-slate-400">{user ? user.email : 'Create a recruiter session to save data.'}</p>
+            </div>
+            {user && (
+              <button
+                className="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
+                onClick={() => {
+                  setToken(null);
+                  setUser(null);
+                  setApiRankings([]);
+                  setStatus('Signed out.');
+                }}
+              >
+                Sign out
+              </button>
+            )}
+          </div>
+          {!user && (
+            <form className="space-y-3" onSubmit={handleAuth}>
+              <div className="grid grid-cols-3 gap-2 rounded-xl bg-white/5 p-1 text-sm">
+                {['demo', 'login', 'register'].map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={`rounded-lg px-3 py-2 capitalize ${mode === item ? 'bg-white/15 text-white' : 'text-slate-400'}`}
+                    onClick={() => setMode(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+              {mode === 'register' && (
+                <Input placeholder="Name" value={authForm.name} onChange={(value) => setAuthForm({ ...authForm, name: value })} />
+              )}
+              {mode !== 'demo' && (
+                <>
+                  <Input placeholder="Email" value={authForm.email} onChange={(value) => setAuthForm({ ...authForm, email: value })} />
+                  <Input
+                    placeholder="Password"
+                    type="password"
+                    value={authForm.password}
+                    onChange={(value) => setAuthForm({ ...authForm, password: value })}
+                  />
+                </>
+              )}
+              <RippleButton icon={Sparkles}>{mode === 'demo' ? 'Use Demo Account' : 'Continue'}</RippleButton>
+            </form>
+          )}
+          <div className="mt-5 rounded-xl border border-cyan/20 bg-cyan/10 p-4 text-sm text-cyan">{status}</div>
+        </GlassCard>
+
+        <GlassCard className="p-6">
+          <div className="grid gap-5 xl:grid-cols-2">
+            <div>
+              <h3 className="text-lg font-semibold">Job Description</h3>
+              <Input className="mt-4" placeholder="Job title" value={jobTitle} onChange={setJobTitle} />
+              <textarea
+                className="mt-3 min-h-40 w-full resize-none rounded-xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan/50"
+                value={jobDescription}
+                onChange={(event) => setJobDescription(event.target.value)}
+              />
+              <button
+                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-white/10 px-4 text-sm font-semibold transition hover:bg-white/15 disabled:opacity-50"
+                disabled={!user || loading}
+                onClick={createJob}
+              >
+                Parse Job Description
+              </button>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">Resume Upload</h3>
+              <label className="mt-4 grid min-h-40 cursor-pointer place-items-center rounded-xl border border-dashed border-cyan/30 bg-white/5 p-5 text-center transition hover:border-cyan/70">
+                <input
+                  className="hidden"
+                  type="file"
+                  multiple
+                  accept=".pdf,.docx,.txt,.md"
+                  onChange={(event) => setFiles(Array.from(event.target.files || []))}
+                />
+                <span>
+                  <UploadCloud className="mx-auto mb-3 h-8 w-8 text-cyan" />
+                  <span className="block text-sm font-medium">{files.length ? `${files.length} file selected` : 'Choose PDF, DOCX, TXT, or MD resumes'}</span>
+                </span>
+              </label>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <button className="rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-50" disabled={!user || loading} onClick={uploadResumes}>
+                  Parse Resumes
+                </button>
+                <button className="rounded-xl bg-gradient-to-r from-electric to-violet px-4 py-3 text-sm font-semibold shadow-glow disabled:opacity-50" disabled={!canRank || loading} onClick={runRanking}>
+                  Run AI Ranking
+                </button>
+              </div>
+              <div className="mt-4 grid gap-2 text-sm text-slate-300">
+                <p>Job saved: {job ? job.title : 'None yet'}</p>
+                <p>Parsed resumes: {uploaded.length}</p>
+                <p>AI provider: OpenAI when `OPENAI_API_KEY` is set, local scorer otherwise.</p>
+              </div>
+            </div>
+          </div>
+        </GlassCard>
+      </div>
+    </Section>
+  );
+}
+
+function Input({ value, onChange, placeholder, type = 'text', className = '' }) {
+  return (
+    <input
+      className={`min-h-11 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan/50 ${className}`}
+      type={type}
+      value={value}
+      placeholder={placeholder}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  );
+}
+
+function DashboardPreview({ onSelect, apiRankings }) {
+  const dashboardCandidates = useMemo(() => {
+    if (!apiRankings.length) return candidates;
+    return apiRankings.map((ranking, index) => {
+      const parsed = ranking.candidate.parsed_json || ranking.candidate.parsed || {};
+      return {
+        rank: index + 1,
+        name: ranking.candidate.name,
+        company: ranking.candidate.current_company || parsed.currentCompany || 'Parsed Resume',
+        score: Number(ranking.totalScore || ranking.total_score || 0),
+        experience: `${parsed.years || 'N/A'} Years`,
+        skills: parsed.skills?.length ? parsed.skills : ['Parsed Resume'],
+        behaviorScore: Number(ranking.behaviorScore || ranking.behavior_score || 0),
+        recommendation: ranking.recommendation,
+        salary: 'Market aligned',
+        completeness: Number(ranking.semanticScore || ranking.semantic_score || 80),
+        responseRate: Number(ranking.behaviorScore || ranking.behavior_score || 75),
+        github: Number(ranking.technicalScore || ranking.technical_score || 70),
+        interview: Number(ranking.cultureScore || ranking.culture_score || 70),
+        summary: parsed.summary || 'Parsed candidate profile ranked against the active job description.',
+        timeline: ['Resume uploaded', 'Profile parsed', 'AI ranking completed'],
+        signals: ranking.reasoning?.reasons || ranking.reasoning_json?.reasons || ['Ranking generated from uploaded resume content.'],
+        strengths: ranking.reasoning?.strengths || ranking.reasoning_json?.strengths || parsed.skills || [],
+        weaknesses: ranking.reasoning?.weaknesses || ranking.reasoning_json?.weaknesses || [],
+        confidence: ranking.reasoning?.confidence || ranking.reasoning_json?.confidence || 70,
+      };
+    });
+  }, [apiRankings]);
+
   return (
     <Section id="dashboard" className="max-w-[1500px]">
       <SectionHeader eyebrow="Dashboard" title="A realistic recruiter command center" />
@@ -278,7 +516,7 @@ function DashboardPreview({ onSelect }) {
               ))}
             </div>
             <div className="mt-6 grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-              <CandidateTable onSelect={onSelect} />
+              <CandidateTable onSelect={onSelect} tableCandidates={dashboardCandidates} />
               <Charts />
             </div>
           </div>
@@ -320,7 +558,7 @@ function Sidebar() {
   );
 }
 
-function CandidateTable({ onSelect }) {
+function CandidateTable({ onSelect, tableCandidates }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035]">
       <div className="flex items-center justify-between border-b border-white/10 p-5">
@@ -337,7 +575,7 @@ function CandidateTable({ onSelect }) {
             </tr>
           </thead>
           <tbody>
-            {candidates.map((candidate) => (
+            {tableCandidates.map((candidate) => (
               <tr key={candidate.name} className="border-t border-white/10 transition hover:bg-white/[0.035]">
                 <td className="px-5 py-4 font-semibold text-cyan">#{candidate.rank}</td>
                 <td className="px-5 py-4">
@@ -354,7 +592,7 @@ function CandidateTable({ onSelect }) {
                 <td className="px-5 py-4">
                   <div className="flex min-w-28 items-center gap-3">
                     <ProgressBar value={candidate.score} />
-                    <span className="w-12 text-xs text-slate-300">{candidate.score}%</span>
+                    <span className="w-12 text-xs text-slate-300">{Number(candidate.score).toFixed(1)}%</span>
                   </div>
                 </td>
                 <td className="px-5 py-4 text-slate-300">{candidate.experience}</td>
