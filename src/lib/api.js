@@ -35,6 +35,9 @@ export const authApi = {
 
 export const resumeApi = {
   health: () => api('/api/health'),
+  getJobs: () => api('/api/jobs'),
+  getCandidates: () => api('/api/candidates'),
+  getRankings: (jobId) => api(`/api/rankings${jobId ? `?jobId=${jobId}` : ''}`),
   createJob: (payload) => api('/api/jobs', { method: 'POST', body: JSON.stringify(payload) }),
   uploadResumes: (files) => {
     const form = new FormData();
