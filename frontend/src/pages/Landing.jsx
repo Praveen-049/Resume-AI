@@ -13,22 +13,47 @@ export const Landing = () => {
   }, [token, navigate]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 text-white flex flex-col justify-center items-center">
-      <div className="text-center max-w-2xl mx-auto px-4">
-        <h1 className="text-5xl font-bold mb-6">Resume AI Ranker</h1>
-        <p className="text-xl mb-8 text-blue-100">
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(to bottom right, #2563eb, #1e40af)',
+      color: 'white',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: '1rem',
+    }}>
+      <div style={{ textAlign: 'center', maxWidth: '42rem', marginLeft: 'auto', marginRight: 'auto' }}>
+        <h1 style={{ fontSize: '3rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Resume AI Ranker</h1>
+        <p style={{ fontSize: '1.25rem', marginBottom: '2rem', opacity: 0.9 }}>
           Upload your job description and resume candidates to get instant AI-powered rankings.
         </p>
-        <div className="space-x-4">
+        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
           <button
             onClick={() => navigate('/login')}
-            className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-blue-50 transition"
+            style={{
+              backgroundColor: 'white',
+              color: '#2563eb',
+              padding: '0.75rem 2rem',
+              borderRadius: '0.5rem',
+              fontWeight: '600',
+              border: 'none',
+              cursor: 'pointer',
+            }}
           >
             Sign In
           </button>
           <button
             onClick={() => navigate('/register')}
-            className="bg-blue-500 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-400 transition border-2 border-white"
+            style={{
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              padding: '0.75rem 2rem',
+              borderRadius: '0.5rem',
+              fontWeight: '600',
+              border: '2px solid white',
+              cursor: 'pointer',
+            }}
           >
             Get Started
           </button>
