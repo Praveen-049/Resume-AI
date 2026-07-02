@@ -170,8 +170,8 @@ function Hero() {
           ResumeAI intelligently ranks candidates using semantic understanding, behavioral signals, career progression, and AI reasoning instead of simple keyword matching.
         </motion.p>
         <motion.div variants={fadeUp} className="mt-9 flex flex-col gap-4 sm:flex-row">
-          <RippleButton icon={UploadCloud}>Upload Job Description</RippleButton>
-          <RippleButton variant="secondary" icon={LayoutDashboard}>View Demo</RippleButton>
+          <RippleButton icon={UploadCloud} onClick={() => scrollToSection('backend')}>Upload Job Description</RippleButton>
+          <RippleButton variant="secondary" icon={LayoutDashboard} onClick={() => scrollToSection('dashboard')}>View Demo</RippleButton>
         </motion.div>
       </motion.div>
       <motion.div
@@ -191,14 +191,21 @@ function Hero() {
   );
 }
 
-function RippleButton({ children, icon: Icon, variant = 'primary' }) {
+function scrollToSection(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function RippleButton({ children, icon: Icon, variant = 'primary', onClick, type = 'button', disabled = false }) {
   const classes =
     variant === 'primary'
       ? 'bg-gradient-to-r from-electric via-cyan to-violet text-white shadow-glow'
       : 'glass border border-white/10 text-white hover:border-cyan/50';
   return (
     <motion.button
+      type={type}
       className={`relative inline-flex min-h-12 items-center justify-center gap-2 overflow-hidden rounded-xl px-6 py-3 text-sm font-semibold transition ${classes}`}
+      disabled={disabled}
+      onClick={onClick}
       whileHover={{ scale: 1.03 }}
       whileTap={{ scale: 0.97 }}
     >
@@ -277,6 +284,16 @@ function BackendWorkspace({ user, setUser, setApiRankings }) {
 
   const canRank = user && job && uploaded.length > 0;
 
+  async function ensureSession() {
+    if (user) return user;
+
+    setStatus('Starting demo recruiter session...');
+    const result = await authApi.demo();
+    setToken(result.token);
+    setUser(result.user);
+    return result.user;
+  }
+
   async function handleAuth(event) {
     event.preventDefault();
     setLoading(true);
@@ -300,6 +317,8 @@ function BackendWorkspace({ user, setUser, setApiRankings }) {
   async function createJob() {
     setLoading(true);
     try {
+      await ensureSession();
+      setStatus('Parsing job description and extracting hiring signals...');
       const result = await resumeApi.createJob({ title: jobTitle, description: jobDescription });
       setJob(result.job);
       setStatus(`Job parsed: ${result.job.extracted_json.skills.length || 0} skills detected.`);
@@ -317,6 +336,8 @@ function BackendWorkspace({ user, setUser, setApiRankings }) {
     }
     setLoading(true);
     try {
+      await ensureSession();
+      setStatus('Uploading and parsing resumes...');
       const result = await resumeApi.uploadResumes(files);
       setUploaded(result.candidates);
       setStatus(`${result.candidates.length} resume${result.candidates.length === 1 ? '' : 's'} parsed and saved.`);
@@ -392,7 +413,9 @@ function BackendWorkspace({ user, setUser, setApiRankings }) {
                   />
                 </>
               )}
-              <RippleButton icon={Sparkles}>{mode === 'demo' ? 'Use Demo Account' : 'Continue'}</RippleButton>
+              <RippleButton icon={Sparkles} type="submit" disabled={loading}>
+                {mode === 'demo' ? 'Use Demo Account' : 'Continue'}
+              </RippleButton>
             </form>
           )}
           <div className="mt-5 rounded-xl border border-cyan/20 bg-cyan/10 p-4 text-sm text-cyan">{status}</div>
@@ -410,10 +433,10 @@ function BackendWorkspace({ user, setUser, setApiRankings }) {
               />
               <button
                 className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-white/10 px-4 text-sm font-semibold transition hover:bg-white/15 disabled:opacity-50"
-                disabled={!user || loading}
+                disabled={loading}
                 onClick={createJob}
               >
-                Parse Job Description
+                {loading ? 'Working...' : 'Parse Job Description'}
               </button>
             </div>
             <div>
@@ -432,8 +455,8 @@ function BackendWorkspace({ user, setUser, setApiRankings }) {
                 </span>
               </label>
               <div className="mt-3 flex flex-wrap gap-3">
-                <button className="rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-50" disabled={!user || loading} onClick={uploadResumes}>
-                  Parse Resumes
+                <button className="rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/15 disabled:opacity-50" disabled={loading} onClick={uploadResumes}>
+                  {loading ? 'Working...' : 'Parse Resumes'}
                 </button>
                 <button className="rounded-xl bg-gradient-to-r from-electric to-violet px-4 py-3 text-sm font-semibold shadow-glow disabled:opacity-50" disabled={!canRank || loading} onClick={runRanking}>
                   Run AI Ranking
